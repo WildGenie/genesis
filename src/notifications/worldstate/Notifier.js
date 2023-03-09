@@ -401,9 +401,9 @@ export default class Notifier {
     });
   }
 
-  async #sendInvasions(newInvasions, deps) {
+  async #sendInvasions(invasions, deps) {
     const type = 'invasions';
-    return Promise.mapSeries(newInvasions, async (invasion) => {
+    return Promise.mapSeries(invasions, async (invasion) => {
       let thumb;
       try {
         thumb =
@@ -422,9 +422,9 @@ export default class Notifier {
     });
   }
 
-  async #sendNews(newNews, deps, type) {
+  async #sendNews(news, deps, type) {
     type = type || 'news';
-    return this.#standardBroadcast(newNews, { ...deps, Embed: embeds.News, type });
+    return this.#standardBroadcast(news, { ...deps, Embed: embeds.News, type });
   }
 
   async #sendNightwave(nightwave, deps) {

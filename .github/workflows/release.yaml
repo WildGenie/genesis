@@ -61,9 +61,12 @@ jobs:
           SSH_BOT_HOST: ${{ secrets.SSH_BOT_HOST }}
           SSH_BOT_PORT: ${{ secrets.SSH_BOT_PORT }}
           DEPLOY_BRANCH: ${{ secrets.DEPLOY_BRANCH }}
-      - name: Stop Bot Process
+      - name: Stop Processes
         if: ${{ steps.release.outputs.release == 'yes' }}
-        run: ssh bot 'source ~/.zshrc && cd ~/services/genesis-docker && { docker-compose -f docker-compose.prod.yaml down } || echo "Nothing to stop"'
-      - name: Update & Start Bot & Notifiers
+        run: ssh bot 'source ~/.zshrc && cd ~/services/genesis-docker && make -f docker.Makefile down_prod || echo "Nothing to stop"'
+      - name: Update Images
         if: ${{ steps.release.outputs.release == 'yes' }}
         run: ssh bot 'source ~/.zshrc && cd ~/services/genesis-docker && make -f docker.Makefile submod bot notifier'
+      - name: Start Containers
+        if: ${{ steps.release.outputs.release == 'yes' }}
+        run: ssh bot 'source ~/.zshrc && cd ~/services/genesis-docker && make -f docker.Makefile up_prod'
