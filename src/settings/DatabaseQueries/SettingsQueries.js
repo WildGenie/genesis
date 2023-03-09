@@ -9,7 +9,7 @@ import SQL from 'sql-template-strings';
 export default class SettingsQueries {
   /**
    * Get the guilds stored in the database
-   * @returns {Promise.<Object>} Object of guild entries
+   * @returns {Promise.<Record<string, Array<string>>>} Object of guild entries
    */
   async getGuilds() {
     const [rows] = await this.query(SQL`select id, guild_id from channels;`);

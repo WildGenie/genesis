@@ -19,7 +19,7 @@ const activePlatforms = (process.env.PLATFORMS || 'pc').split(',');
 const rest = new Rest();
 const forceHydrate = (process.argv[2] || '').includes('--hydrate') || process.env.BUILD === 'build';
 
-const ldirname = dirname(fileURLToPath(import.meta.url));
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 let timeout;
 
@@ -114,7 +114,7 @@ class Worker {
   }
   async initCache() {
     if (games.includes('WARFRAME')) {
-      deps.workerCache = flatCache.load('worker', path.resolve(ldirname, '../../.cache'));
+      deps.workerCache = flatCache.load('worker', path.resolve(__dirname, '../../.cache'));
 
       // generate guild cache data if not present
       const currentGuilds = deps.workerCache.getKey('guilds');
@@ -163,8 +163,10 @@ class Worker {
       if (!deps.settings) logger.fatal('no settings!!!');
 
       if (games.includes('WARFRAME')) {
-        this.notifier = new Notifier(deps);
-        this.cycleNotifier = new CycleNotifier(deps);
+        const notifier = new Notifier(deps);
+        const cycleNotifier = new CycleNotifier(deps);
+        await notifier.start();
+        await cycleNotifier.start();
       }
 
       if (games.includes('RSS')) {
@@ -176,9 +178,6 @@ class Worker {
         this.twitchNotifier = new TwitchNotifier(deps);
         this.twitchNotifier.start();
       }
-
-      await this.notifier.start();
-      await this.cycleNotifier.start();
 
       if (logger.isLoggable('DEBUG')) {
         await rest.controlMessage({

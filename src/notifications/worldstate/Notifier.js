@@ -1,4 +1,6 @@
 import Promise from 'bluebird';
+import Discord from 'discord.js'; // eslint-disable-line no-unused-vars
+
 import Broadcaster from '../Broadcaster.js';
 import logger from '../../utilities/Logger.js';
 
@@ -72,7 +74,6 @@ const buildNotifiableData = (newData, notified) => {
 
   return data;
 };
-
 const transformMissionType = (rawType) =>
   rawType
     .toLowerCase()
@@ -81,17 +82,20 @@ const transformMissionType = (rawType) =>
     .trim();
 
 export default class Notifier {
-  #settings;
-  #worldStates;
-  #broadcaster;
+  /** @type {Database} */ #settings;
+  /** @type {Record<string, WorldStateCache>} */ #worldStates;
+  /** @type Broadcaster */ #broadcaster;
+  /** @type number */ #shard;
 
-  constructor({ settings, client, worldStates, workerCache }) {
+  constructor({ settings, client, worldStates, workerCache, shard }) {
     this.#settings = settings;
     this.#worldStates = worldStates;
+    this.#shard = shard;
     this.#broadcaster = new Broadcaster({
       client,
       settings: this.#settings,
       workerCache,
+      shardId,
     });
     logger.info('Ready', 'WS');
 
@@ -117,7 +121,7 @@ export default class Notifier {
    * @param  {Object} newData  Updated data from the worldstate
    */
   async onNewData(platform, locale, newData) {
-    const key = `${platform}:${locale}`;
+    const key = `${platform}:${locale}${typeof this.#shard !== 'undefined' ? `:${this.#shard}` : ''}`;
     // don't wait for the previous to finish, this creates a giant backup,
     //  adding 4 new entries every few seconds
     if (updating.has(key) || updating.has(`${key}:cycles`)) return;
@@ -129,16 +133,62 @@ export default class Notifier {
     // Set up data to notify
     updating.add(key);
     const notifiedIds = await this.#settings.getNotifiedIds(key);
-    await this.#sendNew(platform, locale, newData, notifiedIds, buildNotifiableData(newData, notifiedIds));
+    if (!notifiedIds.length) {
+      await this.#settings.setNotifiedIds(key, Notifier.buildIdsList(newData));
+    } else {
+      await this.#sendNew(platform, locale, newData, notifiedIds, buildNotifiableData(newData, notifiedIds));
+    }
     updating.remove(key);
   }
 
-  async #sendNew(
-    platform,
-    locale,
-    rawData,
-    notifiedIds,
-    {
+  static buildIdsList(rawData) {
+    const {
+      alerts,
+      arbitration,
+      archonHunt,
+      dailyDeals,
+      events,
+      fissures,
+      invasions,
+      news,
+      persistentEnemies,
+      sortie,
+      syndicateMissions,
+      voidTrader,
+      twitter,
+      nightwave,
+      flashSales,
+      sentientOutposts,
+      steelPath,
+      conclaveChallenges,
+      weeklyChallenges,
+    } = rawData;
+
+    return [
+      ...persistentEnemies.map((a) => a.pid),
+      `${voidTrader.id}${voidTrader.active ? '1' : '0'}`,
+      ...fissures.map((f) => f.id),
+      ...invasions.map((i) => i.id),
+      ...news.map((n) => n.id),
+      ...events.map((e) => e.id),
+      ...alerts.map((a) => a.id),
+      sortie.id,
+      ...syndicateMissions.map((m) => m.id),
+      ...flashSales.map((s) => s.id),
+      ...dailyDeals.map((d) => d.id),
+      ...conclaveChallenges.map((cc) => cc.id),
+      ...weeklyChallenges.map((w) => w.id),
+      arbitration && arbitration.enemy ? asId(arbitration, 'arbitration') : 'arbitration:0',
+      ...(twitter ? twitter.map((t) => t.uniqueId) : []),
+      ...(nightwave && nightwave.active ? nightwave.activeChallenges.filter((c) => c.active).map((c) => c.id) : []),
+      sentientOutposts.id,
+      steelPath && steelPath.expiry ? asId(steelPath, 'steelpath') : 'steelpath:0',
+      archonHunt.id,
+    ].filter((a) => a);
+  }
+
+  async #sendNew(platform, locale, rawData, notifiedIds, filtered) {
+    const {
       alerts,
       arbitration,
       archonHunt,
@@ -161,8 +211,7 @@ export default class Notifier {
       conclave,
       outposts,
       steelPath,
-    }
-  ) {
+    } = filtered;
     // Send all notifications
     try {
       logger.silly(`sending new data on ${platform} in ${locale}...`);
@@ -209,31 +258,7 @@ export default class Notifier {
     }
 
     try {
-      const alreadyNotified = [
-        ...rawData.persistentEnemies.map((a) => a.pid),
-        `${rawData.voidTrader.id}${rawData.voidTrader.active ? '1' : '0'}`,
-        ...rawData.fissures.map((f) => f.id),
-        ...rawData.invasions.map((i) => i.id),
-        ...rawData.news.map((n) => n.id),
-        ...rawData.events.map((e) => e.id),
-        ...rawData.alerts.map((a) => a.id),
-        rawData.sortie.id,
-        ...rawData.syndicateMissions.map((m) => m.id),
-        ...rawData.flashSales.map((s) => s.id),
-        ...rawData.dailyDeals.map((d) => d.id),
-        ...rawData.conclaveChallenges.map((cc) => cc.id),
-        ...rawData.weeklyChallenges.map((w) => w.id),
-        rawData.arbitration && rawData.arbitration.enemy ? asId(rawData.arbitration, 'arbitration') : 'arbitration:0',
-        ...(rawData.twitter ? rawData.twitter.map((t) => t.uniqueId) : []),
-        ...(rawData.nightwave && rawData.nightwave.active
-          ? rawData.nightwave.activeChallenges.filter((c) => c.active).map((c) => c.id)
-          : []),
-        rawData.sentientOutposts.id,
-        rawData.steelPath && rawData.steelPath.expiry ? asId(rawData.steelPath, 'steelpath') : 'steelpath:0',
-        rawData.archonHunt.id,
-      ].filter((a) => a);
-
-      await this.#settings.setNotifiedIds(`${platform}:${locale}`, alreadyNotified);
+      await this.#settings.setNotifiedIds(`${platform}:${locale}`, Notifier.buildIdsList(rawData));
       logger.silly(`completed sending notifications for ${platform} in ${locale}`);
     } catch (e) {
       logger.error(e);
