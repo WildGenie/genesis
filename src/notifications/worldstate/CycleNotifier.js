@@ -185,7 +185,7 @@ export default class CycleNotifier {
   async #sendCambionCycle({ data: newCycle, dirty: cycleChange }, { platform, notifiedIds, locale, i18n }) {
     let minutesRemaining = cycleChange ? '' : `.${Math.round(fromNow(newCycle.expiry) / 60000)}`;
     const clone = JSON.parse(JSON.stringify(newCycle));
-    let writeType = true;
+    // let writeType = true;
     if (isWithinRange(minutesRemaining)) {
       clone.state = clone.state === 'vome' ? 'fass' : 'vome';
       const newEnd = new Date(clone.expiry).getTime() + durations.deimos[clone.state];
@@ -194,20 +194,21 @@ export default class CycleNotifier {
       clone.expiry = new Date(newEnd);
       delete clone.timeLeft;
       delete clone.shortString;
-      writeType = minutesRemaining.endsWith('.1');
+      // writeType = minutesRemaining.endsWith('.1');
       minutesRemaining = '';
     } else if (minutesRemaining) return undefined;
     const type = `cambion.${clone.state}${minutesRemaining}`;
     if (!notifiedIds.includes(type)) {
       await this.#broadcaster.broadcast(new embeds.Cambion(clone, { i18n, locale }), { platform, type, locale });
     }
-    return writeType ? type : undefined;
+    return type;
+    // return writeType ? type : undefined;
   }
 
   async #sendCetusCycle({ data: newCycle, dirty: cycleChange }, { platform, notifiedIds, locale, i18n }) {
     let minutesRemaining = cycleChange ? '' : `.${Math.round(fromNow(newCycle.expiry) / 60000)}`;
     const clone = JSON.parse(JSON.stringify(newCycle));
-    let writeType = true;
+    // let writeType = true;
     if (isWithinRange(minutesRemaining)) {
       clone.isDay = !clone.isDay;
       clone.state = clone.isDay ? 'day' : 'night';
@@ -217,7 +218,7 @@ export default class CycleNotifier {
       clone.expiry = new Date(newEnd);
       delete clone.timeLeft;
       delete clone.shortString;
-      writeType = minutesRemaining.endsWith('.1');
+      // writeType = minutesRemaining.endsWith('.1');
       minutesRemaining = '';
     } else if (minutesRemaining) return undefined;
     const type = `cetus.${clone.state}${minutesRemaining}`;
@@ -228,7 +229,8 @@ export default class CycleNotifier {
         locale,
       });
     }
-    return writeType ? type : undefined;
+    return type;
+    // return writeType ? type : undefined;
   }
 
   async #sendEarthCycle({ data: newCycle, dirty: cycleChange }, { platform, notifiedIds, locale, i18n }) {
