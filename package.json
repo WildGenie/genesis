@@ -104,7 +104,8 @@
         "error",
         "ignorePackages"
       ],
-      "no-underscore-dangle": ["error", { "allow":  ["__dirname"]}]
+      "no-underscore-dangle": ["error", { "allow":  ["__dirname"]}],
+      "no-named-as-default": "off"
     }
   },
   "prettier": "@wfcd/eslint-config/prettier",

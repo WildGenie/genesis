@@ -162,11 +162,31 @@ class Worker {
 
       if (!deps.settings) logger.fatal('no settings!!!');
 
+      const shardCnt = Number.parseInt(process.env.SHARDS || '0', 10);
       if (games.includes('WARFRAME')) {
-        const notifier = new Notifier(deps);
-        const cycleNotifier = new CycleNotifier(deps);
-        await notifier.start();
-        await cycleNotifier.start();
+        if (!shardCnt) {
+          const notifier = new Notifier(deps);
+          const cycleNotifier = new CycleNotifier(deps);
+          notifier.start();
+          cycleNotifier.start();
+        } else {
+          try {
+            for (let shardId = 0; shardId < shardCnt; shardId += 1) {
+              const notifier = new Notifier({
+                ...deps,
+                shardId,
+              });
+              const cycleNotifier = new CycleNotifier({
+                ...deps,
+                shardId,
+              });
+              notifier.start();
+              cycleNotifier.start();
+            }
+          } catch (e) {
+            logger.error(`Failure to start notifiers ${e}`);
+          }
+        }
       }
 
       if (games.includes('RSS')) {

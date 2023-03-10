@@ -5,7 +5,7 @@ import Broadcaster from '../Broadcaster.js';
 import logger from '../../utilities/Logger.js';
 
 import { asId, embeds, getThumbnailForItem, i18ns, updating } from '../NotifierUtils.js';
-import { syndicates } from '../../resources/index.js';
+import { locales, syndicates } from '../../resources/index.js';
 import { captures, createGroupedArray, platforms } from '../../utilities/CommonFunctions.js';
 
 const updtReg = new RegExp(captures.updates, 'i');
@@ -81,34 +81,41 @@ const transformMissionType = (rawType) =>
     .replace(/\s/g, '')
     .trim();
 
+const isSharded = (shardId) => typeof shardId !== 'undefined';
+
 export default class Notifier {
   /** @type {Database} */ #settings;
   /** @type {Record<string, WorldStateCache>} */ #worldStates;
-  /** @type Broadcaster */ #broadcaster;
-  /** @type number */ #shard;
+  /** @type {Broadcaster} */ #broadcaster;
+  /** @type {number} */ #shardId;
+  /** @type {boolean} */ #ready;
 
-  constructor({ settings, client, worldStates, workerCache, shard }) {
+  constructor({ settings, client, worldStates, workerCache, shardId }) {
     this.#settings = settings;
     this.#worldStates = worldStates;
-    this.#shard = shard;
+    this.#shardId = shardId;
     this.#broadcaster = new Broadcaster({
       client,
       settings: this.#settings,
       workerCache,
-      shardId,
+      shardId: this.#shardId,
     });
-    logger.info('Ready', 'WS');
 
     platforms.forEach((p) => {
-      beats[p] = {
-        lastUpdate: Date.now(),
-        currCycleStart: undefined,
-      };
+      locales.forEach((l) => {
+        const key = `${p}:${l}:${isSharded(this.#shardId) ? `:${this.#shardId}` : ''}`;
+        beats[key] = {
+          lastUpdate: Date.now(),
+          currCycleStart: undefined,
+        };
+      });
     });
+    logger.info(`${isSharded(this.#shardId) ? `${this.#shardId}` : ''} Ready`, 'WS');
+    this.#ready = true;
   }
 
   /** Start the notifier */
-  async start() {
+  start() {
     Object.entries(this.#worldStates).forEach(([, ws]) => {
       ws.on('newData', this.onNewData.bind(this));
     });
@@ -121,7 +128,8 @@ export default class Notifier {
    * @param  {Object} newData  Updated data from the worldstate
    */
   async onNewData(platform, locale, newData) {
-    const key = `${platform}:${locale}${typeof this.#shard !== 'undefined' ? `:${this.#shard}` : ''}`;
+    if (!this.#ready) return;
+    const key = `${platform}:${locale}${isSharded(this.#shardId) ? `:${this.#shardId}` : ''}`;
     // don't wait for the previous to finish, this creates a giant backup,
     //  adding 4 new entries every few seconds
     if (updating.has(key) || updating.has(`${key}:cycles`)) return;
@@ -136,7 +144,7 @@ export default class Notifier {
     if (!notifiedIds.length) {
       await this.#settings.setNotifiedIds(key, Notifier.buildIdsList(newData));
     } else {
-      await this.#sendNew(platform, locale, newData, notifiedIds, buildNotifiableData(newData, notifiedIds));
+      await this.#sendNew(platform, locale, newData, notifiedIds, buildNotifiableData(newData, notifiedIds), key);
     }
     updating.remove(key);
   }
@@ -187,7 +195,7 @@ export default class Notifier {
     ].filter((a) => a);
   }
 
-  async #sendNew(platform, locale, rawData, notifiedIds, filtered) {
+  async #sendNew(platform, locale, rawData, notifiedIds, filtered, key) {
     const {
       alerts,
       arbitration,
@@ -254,11 +262,11 @@ export default class Notifier {
     } catch (e) {
       logger.error(e);
     } finally {
-      beats[`${platform}:${locale}`].lastUpdate = Date.now();
+      beats[key].lastUpdate = Date.now();
     }
 
     try {
-      await this.#settings.setNotifiedIds(`${platform}:${locale}`, Notifier.buildIdsList(rawData));
+      await this.#settings.setNotifiedIds(key, Notifier.buildIdsList(rawData));
       logger.silly(`completed sending notifications for ${platform} in ${locale}`);
     } catch (e) {
       logger.error(e);

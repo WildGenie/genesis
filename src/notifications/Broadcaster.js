@@ -3,7 +3,7 @@ import FlatCache from 'flat-cache'; // eslint-disable-line no-unused-vars
 
 import logger from '../utilities/Logger.js';
 import { cachedEvents } from '../resources/index.js';
-import * as webhook from '../utilities/Webhook.js';
+import webhook from '../utilities/Webhook.js';
 
 export default class Broadcaster {
   #settings;

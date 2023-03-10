@@ -25,6 +25,7 @@ const durations = {
     vome: 3000000,
   },
 };
+const isSharded = (shardId) => typeof shardId !== 'undefined';
 
 /**
  * @typedef {Object} CycleData
@@ -32,8 +33,7 @@ const durations = {
  * @property {boolean} dirty
  */
 
-function buildNotifiableData(newData, platform, locale) {
-  const key = `${platform}:${locale}`;
+function buildNotifiableData(newData, key) {
   const data = {
     /* Cycles data */
     /** @type {CycleData} */
@@ -87,20 +87,23 @@ export default class CycleNotifier {
   #worldStates;
   #broadcaster;
   #ready;
+  #shardId;
 
-  constructor({ settings, client, worldStates, timeout, workerCache }) {
+  constructor({ settings, client, worldStates, timeout, workerCache, shardId }) {
     this.#settings = settings;
     this.#worldStates = worldStates;
     this.#broadcaster = new Broadcaster({
       client,
       settings: this.#settings,
       workerCache,
+      shardId,
     });
-    logger.info('Ready', 'CY');
+    this.#shardId = shardId;
 
     platforms.forEach((p) => {
       locales.forEach((l) => {
-        beats[`${p}:${l}`] = {
+        const key = `${p}:${l}:${isSharded(this.#shardId) ? `:${this.#shardId}` : ''}`;
+        beats[key] = {
           lastUpdate: Date.now(),
           currCycleStart: undefined,
         };
@@ -108,10 +111,11 @@ export default class CycleNotifier {
     });
     refreshRate = timeout;
     this.#ready = true;
+    logger.info(`${isSharded(this.#shardId) ? `${this.#shardId}` : ''} Ready`, 'CY');
   }
 
   /** Start the notifier */
-  async start() {
+  start() {
     Object.entries(this.#worldStates).forEach(([, ws]) => {
       ws.on('newData', this.#onNewData.bind(this));
     });
@@ -126,7 +130,7 @@ export default class CycleNotifier {
   async #onNewData(platform, locale, newData) {
     if (!this.#ready) return;
 
-    const key = `${platform}:${locale}:cycles`;
+    const key = `${platform}:${locale}:cycles${isSharded(this.#shardId) ? `:${this.#shardId}` : ''}`;
     // don't wait for the previous to finish, this creates a giant backup,
     //  adding 4 new entries every few seconds
     if (updating.has(key)) return;
@@ -140,7 +144,7 @@ export default class CycleNotifier {
     // Set up data to notify
     try {
       updating.add(key);
-      await this.#sendNew(platform, locale, newData, notifiedIds, buildNotifiableData(newData, platform, locale), key);
+      await this.#sendNew(platform, locale, newData, notifiedIds, buildNotifiableData(newData, key), key);
       updating.remove(key);
     } catch (e) {
       if (e.message === 'already updating') {
@@ -190,9 +194,9 @@ export default class CycleNotifier {
       clone.expiry = new Date(newEnd);
       delete clone.timeLeft;
       delete clone.shortString;
-      writeType = writeType.endsWith('.1');
+      writeType = minutesRemaining.endsWith('.1');
       minutesRemaining = '';
-    } else return undefined;
+    } else if (minutesRemaining) return undefined;
     const type = `cambion.${clone.state}${minutesRemaining}`;
     if (!notifiedIds.includes(type)) {
       await this.#broadcaster.broadcast(new embeds.Cambion(clone, { i18n, locale }), { platform, type, locale });
@@ -206,16 +210,16 @@ export default class CycleNotifier {
     let writeType = true;
     if (isWithinRange(minutesRemaining)) {
       clone.isDay = !clone.isDay;
-      clone.state = clone.state === 'day' ? 'night' : 'day';
+      clone.state = clone.isDay ? 'day' : 'night';
       const newEnd = new Date(clone.expiry).getTime() + durations.cetus[clone.state];
       clone.id = `cetusCycle${newEnd}`;
       clone.activation = clone.expiry;
       clone.expiry = new Date(newEnd);
       delete clone.timeLeft;
       delete clone.shortString;
-      writeType = writeType.endsWith('.1');
+      writeType = minutesRemaining.endsWith('.1');
       minutesRemaining = '';
-    } else return undefined;
+    } else if (minutesRemaining) return undefined;
     const type = `cetus.${clone.state}${minutesRemaining}`;
     if (!notifiedIds.includes(type)) {
       await this.#broadcaster.broadcast(new embeds.Cycle(clone, { i18n, locale, platform }), {
@@ -240,7 +244,7 @@ export default class CycleNotifier {
       delete clone.timeLeft;
       delete clone.shortString;
       minutesRemaining = '';
-    } else return undefined;
+    } else if (minutesRemaining) return undefined;
     const type = `earth.${clone.state}${minutesRemaining}`;
     if (!notifiedIds.includes(type)) {
       await this.#broadcaster.broadcast(new embeds.Cycle(clone, { i18n, locale, platform }), {
@@ -265,7 +269,7 @@ export default class CycleNotifier {
       delete clone.timeLeft;
       delete clone.shortString;
       minutesRemaining = '';
-    } else return undefined;
+    } else if (minutesRemaining) return undefined;
     const type = `solaris.${clone.state}${minutesRemaining}`;
     if (!notifiedIds.includes(type)) {
       await this.#broadcaster.broadcast(new embeds.Solaris(clone, { i18n, locale, platform }), {
